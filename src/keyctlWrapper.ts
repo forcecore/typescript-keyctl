@@ -17,9 +17,9 @@ class KeyctlWrapper {
     private keyring: string;
     private keytype: string;
 
-    constructor(keyring: string = KeyctlWrapper.defaultKeyring, keytype: string = KeyctlWrapper.defaultKeytype) {
-        this.keyring = keyring;
-        this.keytype = keytype;
+    constructor(keyring: string = '', keytype: string = '') {
+        this.keyring = (keyring) ? keyring : KeyctlWrapper.defaultKeyring;
+        this.keytype = (keytype) ? keytype : KeyctlWrapper.defaultKeytype;
     }
 
     async getAllKeyIds(): Promise<number[]> {
@@ -33,7 +33,7 @@ class KeyctlWrapper {
     }
 
     async getKeyIdFromName(name: string): Promise<number> {
-        const [ret, out, err] = await su.systemUnchecked(['keyctl', 'search', this.keyring, this.keytype, name]);
+        const [ret, out, _err] = await su.systemUnchecked(['keyctl', 'search', this.keyring, this.keytype, name]);
         if (ret !== 0) {
             throw new KeyNotExistError(name);
         }
@@ -106,7 +106,9 @@ class KeyctlWrapper {
 
     async removeKey(keyid: number) {
         // revoke first, because unlinking is slow
-        const [ret, _out, err] = await su.systemUnchecked(['keyctl', 'revoke', keyid.toString()]);
+        const keyidStr = keyid !== 0 ? keyid.toString() : 'None'; // Emulate python behavior
+        const [ret, _out, err] = await su.systemUnchecked(['keyctl', 'revoke', keyidStr]);
+
         if (ret === 1) {
             throw new KeyNotExistError('', keyid);
         }
