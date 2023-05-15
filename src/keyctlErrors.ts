@@ -4,7 +4,7 @@ class KeyctlWrapperException extends Error {
     this.name = "KeyctlWrapperException";
   }
 
-  static getKeyDesc(keyid: string, keyname: string) {
+  static getKeyDesc(keyid: number, keyname: string) {
     if (keyid && keyname) {
       return `('${keyid}' / '${keyname}')`;
     } else if (keyid) {
@@ -18,7 +18,7 @@ class KeyctlWrapperException extends Error {
 }
 
 class KeyNotExistError extends KeyctlWrapperException {
-  constructor(message: string = "", keyid: string = "", keyname: string = "") {
+  constructor(message: string = '', keyid: number = 0, keyname: string = '') {
     if (!message) {
       message = `Key ${KeyctlWrapperException.getKeyDesc(
         keyid,
@@ -31,7 +31,7 @@ class KeyNotExistError extends KeyctlWrapperException {
 }
 
 class KeyAlreadyExistError extends KeyctlWrapperException {
-  constructor(message: string = "", keyid: string = "", keyname: string = "") {
+  constructor(message: string = '', keyid: number = 0, keyname: string = '') {
     if (!message) {
       message = `Key ${KeyctlWrapperException.getKeyDesc(
         keyid,
@@ -45,10 +45,10 @@ class KeyAlreadyExistError extends KeyctlWrapperException {
 
 class KeyctlOperationError extends KeyctlWrapperException {
   constructor(
-    message: string = "",
-    keyid: string = "",
-    keyname: string = "",
-    errmsg: string = ""
+    message: string = '',
+    keyid: number = 0,
+    keyname: string = '',
+    errmsg: string = ''
   ) {
     if (!message) {
       message = `Operation on key ${KeyctlWrapperException.getKeyDesc(

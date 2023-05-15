@@ -1,11 +1,12 @@
 /**
  * Wrapper around system command keyctl
  */
-import { isCommandAvailable } from './sysUtils';
+import su = require('./sysUtils');
+import { KeyAlreadyExistError, KeyNotExistError, KeyctlOperationError } from './keyctlErrors';
 
 
 // Check keyctl command availability while importing the script
-if (!isCommandAvailable('keyctl')) {
+if (!su.isCommandAvailable('keyctl')) {
   throw new Error("keyctl command is not available, please install it");
 }
 
@@ -20,135 +21,105 @@ class KeyctlWrapper {
         this.keyring = keyring;
         this.keytype = keytype;
     }
+
+    async getAllKeyIds(): Promise<number[]> {
+        const out = (await su.system(['keyctl', 'rlist', this.keyring])).trimEnd();
+        if (out === '')
+            return [];
+
+        const tokens = out.split(/\s+/);
+        const result = tokens.map((token) => parseInt(token));
+        return result;
+    }
+
+    async getKeyIdFromName(name: string): Promise<number> {
+        const [ret, out, err] = await su.systemUnchecked(['keyctl', 'search', this.keyring, this.keytype, name]);
+        if (ret !== 0) {
+            throw new KeyNotExistError(name);
+        }
+
+        const keyid = parseInt(out.trim());
+        return keyid;
+    }
+
+    async getNameFromId(keyid: number): Promise<string> {
+        const [ret, out, _err] = await su.systemUnchecked(['keyctl', 'rdescribe', keyid.toString()]);
+        if (ret !== 0) {
+            throw new KeyNotExistError('', keyid);
+        }
+
+        const name = out.split(';').slice(4).join(';').trimEnd();
+        return name;
+    }
+
+    async getDataFromId(keyid: number, mode='raw'): Promise<string> {
+        let kmode = '';
+        if (mode.toLowerCase() === 'raw') {
+            kmode = 'pipe';
+        } else if (mode.toLowerCase() === 'hex') {
+            kmode = 'read';
+        } else {
+            throw new Error('mode must be one of [\'raw\', \'hex\'].');
+        }
+
+        const [ret, out, _err] = await su.systemUnchecked(['keyctl', kmode, keyid.toString()]);
+
+        if (ret === 1)
+            throw new KeyNotExistError('', keyid);
+
+        if (mode === 'raw')
+            return out;
+
+        // connecting lines to a single line and remove first line
+        const lines = out.split("\n").map((line) => line.trimEnd());
+        const h = lines.slice(1).join('');
+        // remove spaces
+        return h.replace(/ /g, '')
+    }
+
+    async addKey(name: string, data: string): Promise<number> {
+        try {
+            const keyid = await this.getKeyIdFromName(name);
+            throw new KeyAlreadyExistError(name, keyid);
+        } catch (error) {
+            if (error instanceof KeyNotExistError) {
+                // we can proceed and add the key
+            } else {
+                throw error;
+            }
+        }
+
+        const out = await su.system(['keyctl', 'padd', this.keytype, name, this.keyring], data);
+        const keyid = parseInt(out);
+        return keyid;
+    }
+
+    async updateKey(keyid: number, data: string) {
+        const [ret, _out, err] = await su.systemUnchecked(['keyctl', 'pupdate', keyid.toString()], data);
+        if (ret === 1) {
+            throw new KeyNotExistError('', keyid);
+        }
+        else if (ret !== 0) {
+            throw new KeyctlOperationError('', keyid, '', `(${ret})${err}`);
+        }
+    }
+
+    async removeKey(keyid: number) {
+        // revoke first, because unlinking is slow
+        const [ret, _out, err] = await su.systemUnchecked(['keyctl', 'revoke', keyid.toString()]);
+        if (ret === 1) {
+            throw new KeyNotExistError('', keyid);
+        }
+        else if (ret !== 0) {
+            throw new KeyctlOperationError('', keyid, '', `(${ret})${err}`);
+        }
+
+        await su.system(['keyctl', 'unlink', keyid.toString(), this.keyring]);
+    }
+
+    async clearKeyring() {
+        await su.system(['keyctl', 'clear', this.keyring]);
+    }
 }
 
-class KeyctlWrapper(object):
-    default_keyring = '@u'
-    default_keytype = 'user'
-
-    def __init__(self, keyring: str=default_keyring, keytype: str=default_keytype):
-        self.keyring = keyring
-        self.keytype = keytype
-
-
-    @staticmethod
-    def _system(args, data: str=None, check=True):
-
-        try:
-            p = subprocess.Popen(
-                args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                stdin=subprocess.PIPE,
-                bufsize=4096,
-                text=True,
-            )
-        except OSError as e:
-            raise OSError('Command \'{}\' execution failed. ErrMsg:{}'.format(' '.join(args), e))
-
-        if data is None:
-            (out, err) = p.communicate()
-        else:
-            (out, err) = p.communicate(input=data)
-
-        ret = p.returncode
-
-        if not check:
-            return ret, out, err
-        elif ret == 0:
-            return out
-        else:
-            raise KeyctlOperationError(errmsg='({}){} {}'.format(ret, err, out))
-
-
-    def get_all_key_ids(self) -> List[int]:
-        out = self._system(['keyctl', 'rlist', self.keyring])
-        l = out.split()
-        l = [int(x) for x in l]
-        return l
-
-
-    def get_id_from_name(self, name: str) -> int:
-        # ret, out, err = self._system(['keyctl', 'request', self.keytype, name], check=False)
-        ret, out, err = self._system(['keyctl', 'search', self.keyring, self.keytype, name], check=False)
-
-        if ret != 0:
-            raise KeyNotExistError(keyname=name)
-
-        keyid = int(out.strip())
-
-        return keyid
-
-
-    def get_name_from_id(self, keyid: int) -> str:
-        ret, out, err = self._system(['keyctl', 'rdescribe', str(keyid)], check=False)
-
-        if ret != 0:
-            raise KeyNotExistError(keyid=keyid)
-
-        name = ';'.join(out.split(';')[4:])
-
-        return name.rstrip('\n')
-
-
-    def get_data_from_id(self, keyid: int, mode='raw'):
-        if mode.lower() == 'raw':
-            kmode = 'pipe'
-        elif mode.lower() == 'hex':
-            kmode = 'read'
-        else:
-            raise AttributeError('mode must be one of [\'raw\', \'hex\'].')
-
-        ret, out, err = self._system(['keyctl', kmode, str(keyid)], check=False)
-
-        if ret == 1:
-            raise KeyNotExistError(keyid=keyid)
-
-        if mode == 'raw':
-            return out
-        else:
-            # connecting lines to a single line and remove first line
-            h = ''.join(out.splitlines()[1:])
-            # remove spaces
-            return h.replace(' ', '')
-
-
-    def add_key(self, name: str, data) -> int:
-        try:
-            keyid = self.get_id_from_name(name)
-            raise KeyAlreadyExistError(keyid=keyid, keyname=name)
-        except KeyNotExistError:
-            pass
-
-        out = self._system(['keyctl', 'padd', self.keytype, name, self.keyring], data)
-        keyid = int(out)
-
-        return keyid
-
-
-    def update_key(self, keyid: int, data):
-        ret, out, err = self._system(['keyctl', 'pupdate', str(keyid)], data, check=False)
-
-        if ret == 1:
-            raise KeyNotExistError(keyid=keyid)
-        elif ret != 0:
-            raise KeyctlOperationError(keyid=keyid, errmsg='({}){}'.format(ret, err))
-
-
-    def remove_key(self, keyid: int):
-        # revoke first, because unlinking is slow
-        ret, out, err = self._system(['keyctl', 'revoke', str(keyid)], check=False)
-        if ret == 1:
-            raise KeyNotExistError(keyid=keyid)
-        elif ret != 0:
-            raise KeyctlOperationError(keyid=keyid, errmsg='({}){}'.format(ret, err))
-
-        self._system(['keyctl', 'unlink', str(keyid), self.keyring])
-
-
-    def clear_keyring(self):
-        self._system(['keyctl', 'clear', self.keyring])
-
-
-
-export { };
+export { KeyctlWrapper };
