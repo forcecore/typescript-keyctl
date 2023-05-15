@@ -16,8 +16,8 @@ function isCommandAvailable(command: string): boolean {
   }
 }
 
-function system(args: string[], data: string | null = null, check: boolean = true): Promise<string | [number, string, string]> {
-  return new Promise<string | [number, string, string]>((resolve, reject) => {
+function systemUnchecked(args: string[], data: string | null = null): Promise<[number, string, string]> {
+  return new Promise<[number, string, string]>((resolve, reject) => {
     const subprocess = cp.spawn(args[0], args.slice(1));
 
     let stdout = '';
@@ -36,13 +36,7 @@ function system(args: string[], data: string | null = null, check: boolean = tru
     });
 
     subprocess.on('close', (code: number) => {
-      if (!check) {
-        resolve([code, stdout, stderr]);
-      } else if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new KeyctlOperationError(`(${code})${stderr} ${stdout}`));
-      }
+      resolve([code, stdout, stderr]);
     });
 
     if (data !== null) {
@@ -54,4 +48,13 @@ function system(args: string[], data: string | null = null, check: boolean = tru
   });
 }
 
-export { isCommandAvailable, system };
+async function system(args: string[], data: string | null = null): Promise<string> {
+  const [code, stdout, stderr] = await systemUnchecked(args, data);
+  if (code === 0) {
+    return stdout;
+  } else {
+    throw new KeyctlOperationError(`(${code})${stderr} ${stdout}`);
+  }
+}
+
+export { isCommandAvailable, system, systemUnchecked };

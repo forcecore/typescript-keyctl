@@ -1,4 +1,4 @@
-import { isCommandAvailable, system } from '../sysUtils';
+import { isCommandAvailable, system, systemUnchecked } from '../sysUtils';
 import { KeyctlOperationError } from '../keyctlErrors';
 
 test('isCommandAvailable false', () => {
@@ -15,7 +15,7 @@ test('system echo hello world', async () => {
 });
 
 test('system echo hello unchecked', async () => {
-  const [errorCode, stdout, stderr] = await system(['echo', 'hello', 'world'], null, false);
+  const [errorCode, stdout, stderr] = await systemUnchecked(['echo', 'hello', 'world'], null);
   expect(errorCode).toBe(0);
   expect(stdout).toBe('hello world\n');
   expect(stderr).toBe('');
@@ -27,7 +27,7 @@ test('cat hello world', async () => {
 });
 
 test('cat hello world unchecked', async () => {
-  const [errorCode, stdout, stderr] = await system(['cat'], 'hello world', false);
+  const [errorCode, stdout, stderr] = await systemUnchecked(['cat'], 'hello world');
   expect(errorCode).toBe(0);
   expect(stdout).toBe('hello world');
   expect(stderr).toBe('');
@@ -41,22 +41,22 @@ test('system xxcp xx checked', async () => {
 
 test('system xxcp xx unchecked', async () => {
   // Failed to execute anything, as command is not found.
-  const task = system(['xxcp', 'xx'], null, false);
+  const task = systemUnchecked(['xxcp', 'xx'], null);
   expect(task).rejects.toThrow();
 });
 
 test('cp xx checked', async () => {
   // Program ran with invalid args
-  const task = system(['cp', 'xx'], null, true);
+  const task = system(['cp', 'xx'], null);
   expect(task).rejects.toThrowError(/missing destination file operand after 'xx'/);
 
-  const task2 = system(['cp', 'xx'], null, true);
+  const task2 = system(['cp', 'xx'], null);
   expect(task2).rejects.toThrow(KeyctlOperationError);
 });
 
 test('cp xx unchecked', async () => {
   // Program ran with invalid args
-  const [errorCode, stdout, stderr] = await system(['cp', 'xx'], null, false);
+  const [errorCode, stdout, stderr] = await systemUnchecked(['cp', 'xx'], null);
   expect(errorCode).not.toBe(0);
   expect(stdout).toBe('');
   expect(stderr).toMatch(/missing destination file operand after 'xx'/);
@@ -64,16 +64,16 @@ test('cp xx unchecked', async () => {
 
 test('tee /root/xxx checked', async () => {
   // Program ran with invalid args
-  const task = system(['tee', '/root/xxx'], 'contents-to-write', true);
+  const task = system(['tee', '/root/xxx'], 'contents-to-write');
   expect(task).rejects.toThrowError(/Permission denied/);
 
-  const task2 = system(['tee', '/root/xxx'], null, true);
+  const task2 = system(['tee', '/root/xxx'], null);
   expect(task2).rejects.toThrow(KeyctlOperationError);
 });
 
 test('tee /root/xxx unchecked', async () => {
   // Program ran with invalid args
-  const [errorCode, stdout, stderr] = await system(['tee', '/root/xxx'], 'contents-to-write', false);
+  const [errorCode, stdout, stderr] = await systemUnchecked(['tee', '/root/xxx'], 'contents-to-write');
   expect(errorCode).not.toBe(0);
   expect(stderr).toMatch(/Permission denied/);
 });
