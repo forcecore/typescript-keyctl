@@ -2,7 +2,7 @@
   "name": "typescript-keyctl",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
     "test": "jest --config jest.config.js",
